@@ -1,0 +1,39 @@
+{
+  "name": "livecode-whiteboard-ide",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/7Manan7/livecode-whiteboard-ide.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/7Manan7/livecode-whiteboard-ide/issues"
+  },
+  "homepage": "https://github.com/7Manan7/livecode-whiteboard-ide#readme",
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "fabric": "^6.9.0",
+    "lucide-react": "^0.554.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.6",
+    "simple-peer": "^9.11.1",
+    "socket.io-client": "^4.8.1",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "vite": "^7.2.4"
+  }
+}
