@@ -1,12 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { Play, Settings, ChevronDown, Loader2, X } from 'lucide-react';
+import { useSocket } from '../context/SocketContext';
 
-const CodeEditor = ({ code, setCode, language, setLanguage }) => {
+const CodeEditor = ({ code, setCode, language, setLanguage, roomId }) => {
   const [theme, setTheme] = useState('vs-dark');
   const [output, setOutput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [showOutput, setShowOutput] = useState(false);
+  const socket = useSocket();
+
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('code-update', (newCode) => {
+      setCode(newCode);
+    });
+
+    return () => {
+      socket.off('code-update');
+    };
+  }, [socket, setCode]);
+
+  const handleEditorChange = (value) => {
+    setCode(value);
+    if (socket) {
+      socket.emit('code-change', { roomId, code: value });
+    }
+  };
 
   const languages = [
     { id: 'javascript', label: 'JavaScript', pistonLang: 'javascript', version: '18.15.0' },
@@ -195,7 +216,7 @@ const CodeEditor = ({ code, setCode, language, setLanguage }) => {
             language={language}
             value={code}
             theme={theme}
-            onChange={(value) => setCode(value)}
+            onChange={handleEditorChange}
             options={{
               minimap: { enabled: true },
               fontSize: 14,

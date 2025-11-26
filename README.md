@@ -68,6 +68,11 @@ A professional interview software platform with integrated code editor, whiteboa
 npm run build
 ```
 
+### Stop server
+```
+ netstat -ano | findstr :5000
+```
+
 The production-ready files will be in the `dist` directory.
 
 ## 📁 File Structure

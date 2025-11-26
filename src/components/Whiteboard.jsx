@@ -2,7 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as fabric from 'fabric';
 import { Pencil, Square, Circle as CircleIcon, Type, Trash2, MousePointer, Minus, Plus } from 'lucide-react';
 
-const Whiteboard = () => {
+import { useSocket } from '../context/SocketContext';
+
+const Whiteboard = ({ roomId }) => {
+    const socket = useSocket();
+    const isRemoteUpdate = useRef(false);
     const canvasRef = useRef(null);
     const fabricCanvasRef = useRef(null);
     const [activeTool, setActiveTool] = useState('pencil');
@@ -38,9 +42,58 @@ const Whiteboard = () => {
             };
 
             window.addEventListener('resize', handleResize);
+
+            // Socket Events
+            canvas.on('path:created', (e) => {
+                if (isRemoteUpdate.current) return;
+                if (socket) {
+                    socket.emit('draw-data', { roomId, data: e.path.toJSON() });
+                }
+            });
+
+            canvas.on('object:added', (e) => {
+                if (isRemoteUpdate.current) return;
+                if (e.target && !e.target.path) { // Avoid double emitting path:created objects
+                    if (socket) {
+                        socket.emit('draw-data', { roomId, data: e.target.toJSON() });
+                    }
+                }
+            });
+
             return () => window.removeEventListener('resize', handleResize);
         }
-    }, []);
+    }, [socket, roomId]);
+
+    useEffect(() => {
+        if (!socket || !fabricCanvasRef.current) return;
+
+        const handleDrawData = (data) => {
+            isRemoteUpdate.current = true;
+            fabric.util.enlivenObjects([data], (objects) => {
+                objects.forEach((obj) => {
+                    fabricCanvasRef.current.add(obj);
+                });
+                fabricCanvasRef.current.renderAll();
+                isRemoteUpdate.current = false;
+            });
+        };
+
+        const handleClearCanvas = () => {
+            isRemoteUpdate.current = true;
+            fabricCanvasRef.current.clear();
+            fabricCanvasRef.current.backgroundColor = '#ffffff';
+            fabricCanvasRef.current.renderAll();
+            isRemoteUpdate.current = false;
+        };
+
+        socket.on('draw-data', handleDrawData);
+        socket.on('clear-canvas', handleClearCanvas);
+
+        return () => {
+            socket.off('draw-data', handleDrawData);
+            socket.off('clear-canvas', handleClearCanvas);
+        };
+    }, [socket]);
 
     useEffect(() => {
         const canvas = fabricCanvasRef.current;
@@ -104,6 +157,9 @@ const Whiteboard = () => {
             canvas.clear();
             canvas.backgroundColor = '#ffffff';
             canvas.renderAll();
+            if (socket) {
+                socket.emit('clear-canvas', { roomId });
+            }
         }
     };
 

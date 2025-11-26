@@ -1,7 +1,8 @@
 import React from 'react';
-import { Code, PenTool, Video, Settings } from 'lucide-react';
+import { Code, PenTool, Video, Settings, MessageSquare, PanelRightClose, PanelRightOpen } from 'lucide-react';
 
-const Layout = ({ activeTab, setActiveTab, children }) => {
+const Layout = ({ activeTab, setActiveTab, children, rightSidebar }) => {
+    const [isRightSidebarOpen, setIsRightSidebarOpen] = React.useState(true);
     return (
         <div style={{
             display: 'flex',
@@ -41,10 +42,10 @@ const Layout = ({ activeTab, setActiveTab, children }) => {
                 {/* Bottom Icons */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
                     <ActivityBarIcon
-                        icon={<Video size={20} />}
-                        label="Video Call"
+                        icon={isRightSidebarOpen ? <PanelRightClose size={20} /> : <PanelRightOpen size={20} />}
+                        label="Toggle Sidebar"
                         isActive={false}
-                        onClick={() => { }}
+                        onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
                     />
                     <ActivityBarIcon
                         icon={<Settings size={20} />}
@@ -65,6 +66,19 @@ const Layout = ({ activeTab, setActiveTab, children }) => {
             }}>
                 {children}
             </div>
+
+            {/* Right Sidebar (Communication) */}
+            {isRightSidebarOpen && (
+                <div style={{
+                    width: '320px',
+                    backgroundColor: '#1e1e1e',
+                    borderLeft: '1px solid #2d2d30',
+                    display: 'flex',
+                    flexDirection: 'column'
+                }}>
+                    {rightSidebar}
+                </div>
+            )}
         </div>
     );
 };

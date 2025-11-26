@@ -1,12 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, Minimize2 } from 'lucide-react';
+import SimplePeer from 'simple-peer';
+import { useSocket } from '../context/SocketContext';
 
-const VideoChat = () => {
+const VideoChat = ({ roomId }) => {
     const [stream, setStream] = useState(null);
+    const [peers, setPeers] = useState([]);
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
+
+    const socket = useSocket();
     const userVideo = useRef();
+    const peersRef = useRef([]);
 
     useEffect(() => {
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
@@ -15,18 +21,91 @@ const VideoChat = () => {
                 if (userVideo.current) {
                     userVideo.current.srcObject = currentStream;
                 }
+
+                if (!socket) return;
+
+                socket.on("existing-users", (users) => {
+                    const peers = [];
+                    users.forEach((userID) => {
+                        const peer = createPeer(userID, socket.id, currentStream);
+                        peersRef.current.push({
+                            peerID: userID,
+                            peer,
+                        });
+                        peers.push({
+                            peerID: userID,
+                            peer,
+                        });
+                    });
+                    setPeers(peers);
+                });
+
+                socket.on("user-connected", (payload) => {
+                    console.log("User connected:", payload);
+                });
+
+                socket.on("signal", (payload) => {
+                    const item = peersRef.current.find((p) => p.peerID === payload.callerID);
+                    if (item) {
+                        item.peer.signal(payload.signal);
+                    } else {
+                        const peer = addPeer(payload.signal, payload.callerID, currentStream);
+                        peersRef.current.push({
+                            peerID: payload.callerID,
+                            peer,
+                        });
+                        setPeers((users) => [...users, { peerID: payload.callerID, peer }]);
+                    }
+                });
+
+                socket.on("user-disconnected", (id) => {
+                    const peerObj = peersRef.current.find((p) => p.peerID === id);
+                    if (peerObj) {
+                        peerObj.peer.destroy();
+                    }
+                    const peers = peersRef.current.filter((p) => p.peerID !== id);
+                    peersRef.current = peers;
+                    setPeers(peers);
+                });
             })
             .catch((err) => {
                 console.error("Error accessing media devices:", err);
             });
-    }, []);
 
-    // Reconnect video when component becomes visible after minimize
-    useEffect(() => {
-        if (!isMinimized && stream && userVideo.current) {
-            userVideo.current.srcObject = stream;
+        return () => {
+            // Cleanup
         }
-    }, [isMinimized, stream]);
+    }, [socket, roomId]);
+
+    function createPeer(userToSignal, callerID, stream) {
+        const peer = new SimplePeer({
+            initiator: true,
+            trickle: false,
+            stream,
+        });
+
+        peer.on("signal", (signal) => {
+            socket.emit("signal", { userToSignal, callerID, signal });
+        });
+
+        return peer;
+    }
+
+    function addPeer(incomingSignal, callerID, stream) {
+        const peer = new SimplePeer({
+            initiator: false,
+            trickle: false,
+            stream,
+        });
+
+        peer.on("signal", (signal) => {
+            socket.emit("signal", { userToSignal: callerID, callerID: socket.id, signal });
+        });
+
+        peer.signal(incomingSignal);
+
+        return peer;
+    }
 
     const toggleMute = () => {
         if (stream) {
@@ -42,187 +121,101 @@ const VideoChat = () => {
         }
     };
 
-    if (isMinimized) {
-        return (
-            <button
-                onClick={() => setIsMinimized(false)}
-                style={{
-                    position: 'fixed',
-                    bottom: '16px',
-                    right: '16px',
-                    width: '48px',
-                    height: '48px',
-                    backgroundColor: '#007acc',
-                    border: 'none',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'white',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-                    zIndex: 1000
-                }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1a8ad4'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#007acc'}
-            >
-                <VideoIcon size={20} />
-            </button>
-        );
-    }
+    const totalVideos = peers.length + 1;
 
     return (
-        <div style={{
-            position: 'fixed',
-            bottom: '16px',
-            right: '16px',
-            width: '320px',
-            backgroundColor: '#2d2d30',
-            border: '1px solid #3e3e42',
-            borderRadius: '4px',
-            overflow: 'hidden',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
-            zIndex: 1000,
-            display: 'flex',
-            flexDirection: 'column'
-        }}>
-            {/* Header */}
-            <div style={{
-                padding: '8px 12px',
-                backgroundColor: '#252526',
-                borderBottom: '1px solid #3e3e42',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        backgroundColor: '#16a34a'
-                    }}></div>
-                    <span style={{ fontSize: '12px', color: '#cccccc', fontWeight: '500' }}>Interview Call</span>
+        <div className="flex flex-col h-full bg-[#1e1e1e]">
+            <div className="p-3 border-b border-[#333] bg-[#252526] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span className="text-sm font-medium text-gray-300">Video ({totalVideos})</span>
                 </div>
-                <button
-                    onClick={() => setIsMinimized(true)}
-                    style={{
-                        padding: '4px',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        color: '#858585',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        borderRadius: '2px'
-                    }}
-                    onMouseOver={(e) => {
-                        e.currentTarget.style.backgroundColor = '#3c3c3c';
-                        e.currentTarget.style.color = '#cccccc';
-                    }}
-                    onMouseOut={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = '#858585';
-                    }}
-                >
-                    <Minimize2 size={14} />
-                </button>
             </div>
 
-            {/* Video Area */}
-            <div style={{
-                position: 'relative',
-                width: '100%',
-                aspectRatio: '16/9',
-                backgroundColor: '#1e1e1e',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-            }}>
-                {stream ? (
-                    <video
-                        playsInline
-                        muted
-                        ref={userVideo}
-                        autoPlay
-                        style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                            transform: 'scaleX(-1)'
-                        }}
-                    />
-                ) : (
-                    <div style={{
-                        textAlign: 'center',
-                        color: '#858585',
-                        fontSize: '12px'
-                    }}>
-                        <VideoIcon size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
-                        <div>Connecting...</div>
+            <div className="flex-1 overflow-y-auto p-2">
+                <div className={`grid gap-2 ${totalVideos === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    {/* Local Video */}
+                    <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-[#333]">
+                        {stream ? (
+                            <video
+                                playsInline
+                                muted
+                                ref={userVideo}
+                                autoPlay
+                                className="w-full h-full object-cover scale-x-[-1]"
+                            />
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-gray-500 text-xs">
+                                <div className="flex flex-col items-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <span>Loading...</span>
+                                </div>
+                            </div>
+                        )}
+                        <div className="absolute bottom-1 left-1 text-[10px] text-white bg-black/60 px-1.5 py-0.5 rounded backdrop-blur-sm">You</div>
+
+                        <div className="absolute top-1 right-1 flex gap-1">
+                            {isMuted && <div className="bg-red-500/80 p-1 rounded"><MicOff size={10} className="text-white" /></div>}
+                        </div>
                     </div>
-                )}
+
+                    {/* Remote Videos */}
+                    {peers.map((peer) => (
+                        <Video key={peer.peerID} peer={peer.peer} />
+                    ))}
+                </div>
             </div>
 
             {/* Controls */}
-            <div style={{
-                padding: '12px',
-                backgroundColor: '#252526',
-                borderTop: '1px solid #3e3e42',
-                display: 'flex',
-                justifyContent: 'center',
-                gap: '8px'
-            }}>
+            <div className="p-3 bg-[#252526] border-t border-[#333] flex justify-center gap-3">
                 <ControlButton
-                    icon={isMuted ? <MicOff size={16} /> : <Mic size={16} />}
+                    icon={isMuted ? <MicOff size={18} /> : <Mic size={18} />}
                     onClick={toggleMute}
                     isActive={isMuted}
                     isDanger={isMuted}
+                    title={isMuted ? "Unmute" : "Mute"}
                 />
                 <ControlButton
-                    icon={isVideoOff ? <VideoOff size={16} /> : <VideoIcon size={16} />}
+                    icon={isVideoOff ? <VideoOff size={18} /> : <VideoIcon size={18} />}
                     onClick={toggleVideo}
                     isActive={isVideoOff}
                     isDanger={isVideoOff}
-                />
-                <ControlButton
-                    icon={<PhoneOff size={16} />}
-                    onClick={() => { }}
-                    isDanger={true}
+                    title={isVideoOff ? "Start Video" : "Stop Video"}
                 />
             </div>
         </div>
     );
 };
 
-const ControlButton = ({ icon, onClick, isActive, isDanger }) => {
-    const [isHovered, setIsHovered] = React.useState(false);
+const Video = ({ peer }) => {
+    const ref = useRef();
 
-    const getBackgroundColor = () => {
-        if (isDanger && isActive) return '#dc2626';
-        if (isDanger) return '#dc2626';
-        if (isActive) return '#3c3c3c';
-        if (isHovered) return '#3c3c3c';
-        return '#2d2d30';
-    };
+    useEffect(() => {
+        peer.on("stream", (stream) => {
+            ref.current.srcObject = stream;
+        });
+    }, [peer]);
 
+    return (
+        <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-[#333]">
+            <video playsInline autoPlay ref={ref} className="w-full h-full object-cover" />
+            <div className="absolute bottom-1 left-1 text-[10px] text-white bg-black/60 px-1.5 py-0.5 rounded backdrop-blur-sm">Peer</div>
+        </div>
+    );
+};
+
+const ControlButton = ({ icon, onClick, isActive, isDanger, title }) => {
     return (
         <button
             onClick={onClick}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            style={{
-                padding: '8px 12px',
-                backgroundColor: getBackgroundColor(),
-                border: '1px solid #3e3e42',
-                borderRadius: '2px',
-                color: '#ffffff',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.15s ease'
-            }}
+            title={title}
+            className={`p-2 rounded border transition-colors flex items-center justify-center
+                ${isDanger
+                    ? 'bg-red-600 border-red-700 text-white hover:bg-red-700'
+                    : isActive
+                        ? 'bg-[#3c3c3c] border-[#3e3e42] text-white'
+                        : 'bg-[#2d2d30] border-[#3e3e42] text-white hover:bg-[#3c3c3c]'
+                }`}
         >
             {icon}
         </button>
